@@ -1,7 +1,7 @@
 # `aipwML` -- Regression adjustment, IPW, and AIPW estimation
 
 The [`aipwML`](https://github.com/apoorvalal/aipwML) package computes
-causal effects using nuisance functions estimated using linear /
+causal effects using pscore and outcome models estimated using linear /
 logistic regression, regularised regression (fit with `glmnet`), random
 forests (fit with `ranger`), and gradient boosted trees (fit with
 `xgboost`). It is written to be as modular and possible so that users

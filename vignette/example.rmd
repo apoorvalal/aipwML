@@ -146,6 +146,13 @@ Need to chose how to estimate $e$ and $m$, so we perform an exhaustive
 search. For each choice of outcome model, I try every other fitter for
 the pscore.
 
+The double-robustness property comes from the fact that getting one of
+the two right yields consistency. From Stefan Wager's notes:
+
+![](figs/f1.png)
+![](figs/f2.png)
+
+
 ## OLS outcome model
 
 
@@ -246,9 +253,12 @@ aipw_estimates |> kbl() %>%
   kable_styling()
 ```
 
-A relatively stable *row or column* in the above table suggests that we got one
-of the two nuisance functions 'right'. In this case, it looks like the GBM
-pscore function yields stable estimates across all choices of outcome models.
+
+A relatively stable *row or column* in the above table suggests that
+we got one of the two nuisance functions 'right'. In this case, it
+looks like the GBM pscore function yields stable estimates across all
+choices of outcome models.
+
 
 # Manual use for inference, other estimands
 

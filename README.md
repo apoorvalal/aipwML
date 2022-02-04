@@ -6,7 +6,14 @@ logistic regression, regularised regression (fit with `glmnet`), random
 forests (fit with `ranger`), and gradient boosted trees (fit with
 `xgboost`). It is written to be as modular and possible so that users
 can specify different choices for the outcome and propensity score
-models.
+models in `mhatter` and `ehatter`.
+
+## installation
+
+``` r
+library(remotes)
+remotes::install_github("apoorvalal/aipwML")
+```
 
 This writeup demonstrates the estimation functions using the Lalonde
 observational dataset where experimental controls were replaced with

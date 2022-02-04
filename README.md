@@ -1,4 +1,4 @@
-# `aipwML` -- Regression adjustment, IPW, and AIPW estimation using ML estimators
+# `aipwML` -- Regression adjustment, IPW, and AIPW estimation
 
 The [`aipwML`](https://github.com/apoorvalal/aipwML) package computes
 causal effects using nuisance functions estimated using linear /

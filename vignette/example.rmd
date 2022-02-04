@@ -40,16 +40,18 @@ knitr::opts_chunk$set(
 )
 ```
 
-The `aipwML` package computes causal effects using nuisance functions estimated
-using linear / logistic regression, regularised regression (fit with `glmnet`),
-random forests (fit with `ranger`), and gradient boosted trees (fit with
-`xgboost`). It is written to be as modular and possible so that users can
-specify different choices for the outcome and propensity score models.
+The [`aipwML`](https://github.com/apoorvalal/aipwML) package computes
+causal effects using nuisance functions estimated using linear /
+logistic regression, regularised regression (fit with `glmnet`),
+random forests (fit with `ranger`), and gradient boosted trees (fit
+with `xgboost`). It is written to be as modular and possible so that
+users can specify different choices for the outcome and propensity
+score models.
 
 This writeup demonstrates the estimation functions using the Lalonde
-observational dataset where experimental controls were replaced with control
-units from the PSID, and standard estimators are badly biased for the
-experimental effect of $\approx$ $1700.
+observational dataset where experimental controls were replaced with
+control units from the PSID, and standard estimators are badly biased
+for the experimental effect of $\approx$ $1700.
 
 # Data Prep
 

@@ -1,61 +1,13 @@
----
-title: aipwML -- Regression adjustment, IPW, and AIPW estimation using ML estimators
-author: Apoorva Lal
-date: "`r format(Sys.time(), '%B %d, %Y')`"
-output:
-  html_document:
-    self_contained: true
-    theme: flatly
-    highlight: tango
-    code_folding: hide
-    css: "/home/alal/Templates/boilerplate/lal-css.css"
-    toc: true
-    toc_float: false
-    toc_depth: 3
-    fig_width:  10
-    fig_height: 8
----
-
-<style type="text/css">
-.main-container {
-  max-width: 1600;
-  margin-left: auto;
-  margin-right: auto;
-}
-</style>
-
-```{r, include = F}
 # %% ####################################################
+rm(list = ls())
 library(causalsens); library(knitr); library(kableExtra)
 # ml libraries
 library(glmnet); library(ranger); library(xgboost)
-
 # this library
-library(aipwML)
+source("../R/fns.R")
+# library(aipwML)
 
-# %% ####################################################
-knitr::opts_chunk$set(
-  echo =    T, include = T, warning = F, message = F,
-  cache   = T, fig.align = "center"
-)
-```
-
-The [`aipwML`](https://github.com/apoorvalal/aipwML) package computes
-causal effects using outcome and propensity score functions estimated
-using linear / logistic regression, regularised regression (fit with
-`glmnet`), random forests (fit with `ranger`), and gradient boosted
-trees (fit with `xgboost`). It is written to be as modular and
-possible so that users can specify different choices for the outcome
-and propensity score models.
-
-This writeup demonstrates the estimation functions using the Lalonde
-observational dataset where experimental controls were replaced with
-control units from the PSID, and standard estimators are badly biased
-for the experimental effect of $\approx$ $1700.
-
-# Data Prep
-
-```{r, data prep}
+# %%
 data(lalonde.psid); df = lalonde.psid
 y = 're78'; w = 'treat'
 x = setdiff(colnames(df), c(y, w))
@@ -66,21 +18,9 @@ fo = re78 ~ (age + education + black + hispanic + married + nodegree +
 # pscore formula
 fp = treat ~ (age + education + black + hispanic + married + nodegree +
     re74 + re75 + u74 + u75)
-```
 
-We have data $\{ y_i, w_i, x_i \}_{i=1}^N \in \mathbb{R} \times \{0, 1\} \times
-\mathbb{R}^k$. Under selection on observables assumptions, we can compute the
-ATE by imputing the missing potential outcome.
+# %%
 
-# Regression Adjustment
-
-$$
-\hat{\tau}_{\text{reg}}^{\text{ATE}}  = \frac{1}{N} \sum_{i=1}^N (
-    \hat{\mu}_1 (x_i) - \hat{\mu}_0 (x_i)
-)
-$$
-
-```{r}
 regadjusts = c(
   ate_reg('ols',      w = w, y = y, df = df, fml = fo),
   ate_reg('lasso',    w = w, y = y, df = df, fml = fo),
@@ -89,19 +29,9 @@ regadjusts = c(
   ate_reg('xgboost',  w = w, y = y, df = df, fml = fo)
 )
 regadjusts |> round(3)
-```
-
-pretty bad.
-
-# Inverse Propensity Weighting (IPW)
 
 
-$$
-\hat{\tau}_{\text{ipw}}^{\text{ATE}} = \frac{1}{N} \sum_{i=1}^N
-\frac{y_i (w_i - \hat{e}(x_i)) }{\hat{e}(x_i) (1 - \hat{e}(x_i)) }
-$$
-
-```{r}
+# %%
 ipws = c(
   ate_ipw('logit',   w = w, y = y, df = df, fml = fp),
   ate_ipw('lasso',   w = w, y = y, df = df, fml = fp),
@@ -111,12 +41,10 @@ ipws = c(
 )
 
 ipws |> round(3)
-```
 
-Still pretty bad. Now trim extreme pscores.
 
-```{r}
-psr = c(0.05, 0.95)
+# %%
+
 ipws2 = c(
   ate_ipw('logit',   w = w, y = y, df = df, fml = fp, psrange = psr),
   ate_ipw('lasso',   w = w, y = y, df = df, fml = fp, psrange = psr),
@@ -126,42 +54,11 @@ ipws2 = c(
 )
 
 ipws2 |> round(3)
-```
-
-Better.
-
-# Augmented IPW
-
-$$
-\hat{\tau}_{\mathrm{AIPW}}^{\text{ATE}} =
-  \frac{1}{N} \sum_{i=1}^{N}
-  \left[\left(
-    \hat{m}_{1}\left(x_{i}\right)+\frac{w_{i}}{\hat{e}\left(x_{i}\right)}
-    \left(y_{i}-\hat{m}_{1}\left(x_{i}\right)\right)\right) -
-    \left(\hat{m}_{0}\left(x_{i}\right)+\frac{1-w_{i}}{1-\hat{e}\left(x_{i}\right)}
-    \left(y_{i}-\hat{m}_{0}\left(x_{i}\right)\right)\right)\right]
-$$
-
-Need to chose how to estimate $e$ and $m$, so we perform an exhaustive
-search. For each choice of outcome model, I try every other fitter for
-the pscore.
-
-The double-robustness property comes from the fact that getting one of
-the two right yields consistency. From Stefan Wager's notes:
-
-![](figs/f1.png)
-![](figs/f2.png)
-
-The `fit_me` function fits the outcome model and pscore model (cross-fit by
-default, wherein nuisance function models are trained on a partition of the data
-and predicted on a hold-out set, so as to avoid over-fitting). Output from this
-function can then be used to estimate the ATE using `ate_aipw` or subset for
-further analysis (e.g. for CATEs).
-
-## OLS outcome model
 
 
-```{r}
+# %%
+psr = c(0.05, 0.95)
+
 ols_mean = c(
   ate_aipw(fit_me(meanfn = 'ols', pscorefn = 'logit',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr),
@@ -174,11 +71,9 @@ ols_mean = c(
   ate_aipw(fit_me(meanfn = 'ols', pscorefn = 'xgboost',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr)
 )
-```
 
-## Ridge outcome model
 
-```{r}
+# %%
 ridge_mean = c(
   ate_aipw(fit_me(meanfn = 'ridge', pscorefn = 'logit',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr),
@@ -191,11 +86,9 @@ ridge_mean = c(
   ate_aipw(fit_me(meanfn = 'ridge', pscorefn = 'xgboost',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr)
 )
-```
 
-## LASSO outcome model
 
-```{r}
+# %%
 lasso_mean = c(
   ate_aipw(fit_me(meanfn = 'lasso', pscorefn = 'logit',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr),
@@ -208,11 +101,9 @@ lasso_mean = c(
   ate_aipw(fit_me(meanfn = 'lasso', pscorefn = 'xgboost',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr)
 )
-```
 
-## Random Forest outcome model
 
-```{r}
+# %%
 rforest_mean = c(
   ate_aipw(fit_me(meanfn = 'rforest', pscorefn = 'logit',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr),
@@ -225,11 +116,8 @@ rforest_mean = c(
   ate_aipw(fit_me(meanfn = 'rforest', pscorefn = 'xgboost',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr)
 )
-```
 
-## GBM outcome model
-
-```{r}
+# %%
 xgboost_mean = c(
   ate_aipw(fit_me(meanfn = 'xgboost', pscorefn = 'logit',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr),
@@ -242,67 +130,41 @@ xgboost_mean = c(
   ate_aipw(fit_me(meanfn = 'xgboost', pscorefn = 'xgboost',
     mean_fml = fo, psc_fml = fp, y = y, w = w, df = df), psrange = psr)
 )
-```
 
-## AIPW table
 
-```{r, table}
-
-# stack estimates
+# %% # stack estimates
 aipw_estimates = rbind(ols_mean, lasso_mean, ridge_mean, rforest_mean, xgboost_mean)
 colnames(aipw_estimates) = c('PS: logit', 'PS: lasso', 'PS: ridge',
   'PS: rforest', 'PS: xgboost')
 rownames(aipw_estimates)= c('Outcome: ols', 'Outcome: lasso', 'Outcome: ridge',
   'Outcome: rforest', 'Outcome: xgboost')
 aipw_estimates |> kbl() %>%
-  kable_styling()
-```
+  kable_styling() |> chr_nb()
 
 
-A relatively stable *row or column* in the above table suggests that
-we got one of the two nuisance functions 'right'. In this case, it
-looks like the GBM pscore function yields stable estimates across all
-choices of outcome models.
-
-
-# Manual use for inference, other estimands
-
-the `fit_me` functions fits the `m` functions and `e` function for each
-observation and returns a dataset that can then be used for manual calculations.
-
-```{r}
+# %%
 library(data.table)
 fit_mod = fit_me(meanfn = 'xgboost', pscorefn = 'xgboost',
     mean_fml = fo, psc_fml  = fp, y = y, w = w, df = df)
 setDT(fit_mod)
 fit_mod |> head()
-```
 
-## trim extreme pscores before AIPW
 
-```{r}
+# %%
 fit_mod |> ate_aipw(c(0.1, 0.9)) |> round(3)
-```
 
-## bootstrap
 
-```{r}
+# %%
 library(boot); library(MASS)
 boot.fn <- function(data, ind){
   d = data[ind, ]
-  fit_mod = fit_me(meanfn = 'ols', pscorefn = 'logit',
+  fit_mod = fit_me(meanfn = 'lasso', pscorefn = 'lasso',
     mean_fml = fo, psc_fml  = fp, y = y, w = w, df = d) |>
     ate_aipw(c(0.1, 0.9))
 }
 out = boot(df, boot.fn, R = 100)
 out |> print()
-```
 
-## ATT
 
-the ATT subsets to treated units and computes the average between the realised
-$Y$ and imputed $Y(0)$, which can be done easily with our estimates.
-
-```{r}
+# %%
 fit_mod[w == 1, mean(y - m0)] |> round(3)
-```

@@ -28,7 +28,7 @@ mhatter = function(estimator, fmla, df, y, ...){
     } else if(estimator == 'xgboost'){
       m = xgboost(data = X, label = ym, nrounds = 1000, verbose = 0,  # silent,
         # stop if no improvement for 10 consecutive trees)
-        early_stopping_rounds = 10 )
+        early_stopping_rounds = 10)
     }
     #################################################
     # add more here
@@ -68,7 +68,7 @@ ehatter = function(estimator, fmla, df, w, ...){
       m = xgboost(data = X, label = wm,
         nrounds = 1000, verbose = 0,  # silent,
         # stop if no improvement for 10 consecutive trees)
-        early_stopping_rounds = 10 )
+        early_stopping_rounds = 10)
     }
     #################################################
     # add more here
@@ -152,8 +152,9 @@ ate_reg = function(est, w, y, df, fml, ret_est = T , ...){
   }
 }
 
+
 # %% ####################################################
-#' Ingredients for AIPW estimator
+#' Ingredients for AIPW estimator (naive)
 #' @param meanfn name of outcome model
 #' @param pscorefn name of pscore model
 #' @param mean_fml formula for outcome model
@@ -173,9 +174,69 @@ fit_me = function(meanfn, pscorefn, mean_fml, psc_fml, y , w, df, ...){
     outdf = data.frame(df[[y]], df[[w]],
       mean_fns$m0$predictions, mean_fns$m1$predictions, pscores)
   }
-  colnames(outdf) = c('y', 'w', 'm0', 'm1', 'eh')
+  colnames(outdf) = c('y', 'w', 'm0', 'm1', 'ehat')
   outdf
 }
+
+# %% ####################################################
+#' Ingredients for AIPW estimator (cross-fit)
+#' @param meanfn name of outcome model
+#' @param pscorefn name of pscore model
+#' @param mean_fml formula for outcome model
+#' @param psc_fml formula for pscore model
+#' @param y outcome name
+#' @param w treatment name
+#' @param df dataframe
+#' @param nfold number of folds (2 by default)
+#' @export
+fit_me_xf = function(meanfn, pscorefn, mean_fml, psc_fml, y , w, df, nfold = 2L, ...){
+  nobs <- nrow(df) #number of observations
+  foldid <- rep.int(1:nfold, times = ceiling(nobs/nfold))[sample.int(nobs)] # define folds indices
+  I <- split(1:nobs, foldid) #split observation indices into folds
+  # init m0, m1, ehat containers
+  m0 <- m1  <- ehat <- rep(NA, nobs)
+  #########################################
+  # cross-fitting
+  #########################################
+  for(b in 1:length(I)){
+    otherFolds = df[-I[[b]], ]; curFold = df[I[[b]], ]
+    # treatment index
+    treatInd = which(otherFolds[[w]] == 1)
+    # compute model fits on -I fold
+    m1mod = mhatter(estimator = meanfn,   fmla = mean_fml, y = y, df = otherFolds[treatInd,  ] )
+    m0mod = mhatter(estimator = meanfn,   fmla = mean_fml, y = y, df = otherFolds[-(treatInd), ])
+    emod  = ehatter(estimator = pscorefn, fmla = psc_fml,  w = w, df = otherFolds)
+    # predict outcome in Ith fold
+    if (meanfn %in% c('lasso', 'ridge')){
+      m1[I[[b]]]     = predict(m1mod, model.matrix(mean_fml, curFold), s = 'lambda.min', type = 'response')
+      m0[I[[b]]]     = predict(m0mod, model.matrix(mean_fml, curFold), s = 'lambda.min', type = 'response')
+    } else if (meanfn == 'rforest'){
+      m1[I[[b]]]     = predict(m1mod, model.matrix(mean_fml, curFold))[['predictions']]
+      m0[I[[b]]]     = predict(m0mod, model.matrix(mean_fml, curFold))[['predictions']]
+    } else if (meanfn == 'xgboost'){
+      m1[I[[b]]]     = predict(m1mod, model.matrix(mean_fml, curFold))
+      m0[I[[b]]]     = predict(m0mod, model.matrix(mean_fml, curFold))
+    } else { # parametric models
+      m1[I[[b]]]     = predict(m1mod, curFold, type = 'response')
+      m0[I[[b]]]     = predict(m0mod, curFold, type = 'response')
+    }
+    # predict pscore in Ith fold
+    if (pscorefn %in% c('lasso', 'ridge')){
+      ehat[I[[b]]] = predict(emod, model.matrix(psc_fml, curFold), s = 'lambda.min', type = 'response')
+    } else if (pscorefn == 'rforest'){
+      ehat[I[[b]]] = predict(emod, model.matrix(psc_fml, curFold), type = 'response')[['predictions']]
+    } else if (pscorefn == 'xgboost'){
+      ehat[I[[b]]] = predict(emod, model.matrix(psc_fml, curFold))
+    } else { # parametric models
+      ehat[I[[b]]] = predict(emod, curFold, type = 'response')
+    }
+  }
+
+  outdf = data.frame(df[[y]], df[[w]], m0, m1, ehat)
+  colnames(outdf) = c('y', 'w', 'm0', 'm1', 'ehat')
+  outdf
+}
+
 # %% ####################################################
 #' compute AIPW
 #' @param d output from fit_me function
@@ -183,10 +244,10 @@ fit_me = function(meanfn, pscorefn, mean_fml, psc_fml, y , w, df, ...){
 #' @return AIPW estimate of ATE
 #' @export
 ate_aipw = function(d, psrange = c(0, 1)){
-  estsamp = d[d$eh >= psrange[1] & d$eh <= psrange[2],]
+  estsamp = d[d$ehat >= psrange[1] & d$ehat <= psrange[2],]
   est = with(estsamp,
-    mean( (m1 + (w/eh)*(y - m1) ) -
-          (m0 + ( ((1 - w)/(1 - eh)) * (y - m0)  ) )
+    mean( (m1 + (w/ehat)*(y - m1) ) -
+          (m0 + ( ((1 - w)/(1 - ehat)) * (y - m0)  ) )
       ))
   est
 }
